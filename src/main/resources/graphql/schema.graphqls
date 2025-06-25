@@ -1,0 +1,112 @@
+# Existing types (updated)
+type SampleResponse {
+    name: String!
+    message: String!
+    user: User
+}
+
+# User types
+type User {
+    id: ID!
+    username: String!
+    email: String!
+    displayName: String!
+    bio: String
+    profileImageUrl: String
+    githubUrl: String
+    twitterUrl: String
+    websiteUrl: String
+    location: String
+    role: UserRole!
+    emailVerified: Boolean!
+    isActive: Boolean!
+    createdAt: String!
+    updatedAt: String!
+}
+
+enum UserRole {
+    USER
+    MODERATOR
+    ADMIN
+}
+
+# Post types
+type Post {
+    id: ID!
+    title: String!
+    slug: String!
+    content: String!
+    excerpt: String
+    coverImageUrl: String
+    canonicalUrl: String
+    status: PostStatus!
+    readingTimeMinutes: Int!
+    viewsCount: Int!
+    author: User!
+    publishedAt: String
+    createdAt: String!
+    updatedAt: String!
+}
+
+enum PostStatus {
+    DRAFT
+    PUBLISHED
+    ARCHIVED
+}
+
+# Authentication types
+type AuthResponse {
+    accessToken: String!
+    refreshToken: String!
+    user: User!
+}
+
+# Input types
+input RegisterInput {
+    username: String!
+    email: String!
+    password: String!
+    displayName: String!
+}
+
+input LoginInput {
+    usernameOrEmail: String!
+    password: String!
+}
+
+input CreatePostInput {
+    title: String!
+    content: String!
+    excerpt: String
+    coverImageUrl: String
+}
+
+# Root types
+type Query {
+    # Legacy queries
+    hello: SampleResponse!
+    simple: String!
+    getUser(id: ID!): User
+    
+    # Post queries
+    posts(page: Int, size: Int): [Post!]!
+    post(slug: String!): Post
+    myPosts(page: Int, size: Int): [Post!]! # Requires authentication
+}
+
+type Mutation {
+    # Legacy mutations
+    registerUser(input: RegisterInput!): User!
+    
+    # Authentication mutations
+    login(input: LoginInput!): AuthResponse!
+    register(input: RegisterInput!): AuthResponse!
+    refreshToken(refreshToken: String!): AuthResponse!
+    logout(refreshToken: String!): Boolean!
+    
+    # Post mutations (all require authentication)
+    createPost(input: CreatePostInput!): Post!
+    publishPost(id: ID!): Post!
+    deletePost(id: ID!): Boolean!
+    archivePost(id: ID!): Post! # Requires MODERATOR or ADMIN role
+}
