@@ -19,6 +19,7 @@ public class JwtServiceImpl implements JwtService {
     private final JwtEncoder accessTokenEncoder;
     private final JwtEncoder refreshTokenEncoder;
     private final JwtDecoder accessTokenDecoder;
+    private final JwtDecoder refreshTokenDecoder;
     private final JwtProperties jwtProperties;
     
     @Override
@@ -35,6 +36,7 @@ public class JwtServiceImpl implements JwtService {
                 .claim("email", user.getEmail())
                 .claim("role", user.getRole().name())
                 .claim("type", "access")
+                .claim("nonce", System.nanoTime()) // Add nanoTime to ensure uniqueness
                 .build();
         return accessTokenEncoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
     }
@@ -51,6 +53,7 @@ public class JwtServiceImpl implements JwtService {
                 .subject(user.getId().toString())
                 .claim("username", user.getUsername())
                 .claim("type", "refresh")
+                .claim("nonce", System.nanoTime()) // Add nanoTime to ensure uniqueness
                 .build();
 
         return refreshTokenEncoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
@@ -59,7 +62,7 @@ public class JwtServiceImpl implements JwtService {
     @Override
     public boolean validateToken(String token) {
         try {
-            Jwt jwt = accessTokenDecoder.decode(token);
+            Jwt jwt = decodeToken(token);
             return !isTokenExpired(jwt);
         } catch (JwtException e) {
             log.debug("Token validation failed: {}", e.getMessage());
@@ -70,7 +73,7 @@ public class JwtServiceImpl implements JwtService {
     @Override
     public String getUserIdFromToken(String token) {
         try {
-            Jwt jwt = accessTokenDecoder.decode(token);
+            Jwt jwt = decodeToken(token);
             return jwt.getSubject();
         } catch (JwtException e) {
             log.debug("Failed to extract user ID from token: {}", e.getMessage());
@@ -81,7 +84,7 @@ public class JwtServiceImpl implements JwtService {
     @Override
     public String getUsernameFromToken(String token) {
         try {
-            Jwt jwt = accessTokenDecoder.decode(token);
+            Jwt jwt = decodeToken(token);
             return jwt.getClaimAsString("username");
         } catch (JwtException e) {
             log.debug("Failed to extract username from token: {}", e.getMessage());
@@ -92,7 +95,7 @@ public class JwtServiceImpl implements JwtService {
     @Override
     public String getRoleFromToken(String token) {
         try {
-            Jwt jwt = accessTokenDecoder.decode(token);
+            Jwt jwt = decodeToken(token);
             return jwt.getClaimAsString("role");
         } catch (JwtException e) {
             log.debug("Failed to extract role from token: {}", e.getMessage());
@@ -103,11 +106,52 @@ public class JwtServiceImpl implements JwtService {
     @Override
     public boolean isTokenExpired(String token) {
         try {
-            Jwt jwt = accessTokenDecoder.decode(token);
+            Jwt jwt = decodeToken(token);
             return isTokenExpired(jwt);
         } catch (JwtException e) {
             return true;
         }
+    }
+    
+    @Override
+    public Instant getExpirationTimeFromToken(String token) {
+        try {
+            Jwt jwt = decodeToken(token);
+            return jwt.getExpiresAt();
+        } catch (JwtException e) {
+            log.debug("Failed to extract expiration time from token: {}", e.getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * Decode a token using the appropriate decoder based on token type
+     */
+    private Jwt decodeToken(String token) {
+        // First try to decode as access token
+        try {
+            Jwt jwt = accessTokenDecoder.decode(token);
+            String tokenType = jwt.getClaimAsString("type");
+            if ("access".equals(tokenType)) {
+                return jwt;
+            }
+        } catch (JwtException e) {
+            // Ignore and try refresh token decoder
+        }
+        
+        // Try to decode as refresh token
+        try {
+            Jwt jwt = refreshTokenDecoder.decode(token);
+            String tokenType = jwt.getClaimAsString("type");
+            if ("refresh".equals(tokenType)) {
+                return jwt;
+            }
+        } catch (JwtException e) {
+            // Ignore
+        }
+        
+        // If both fail, throw exception
+        throw new JwtException("Token could not be decoded as either access or refresh token");
     }
     
     private boolean isTokenExpired(Jwt jwt) {

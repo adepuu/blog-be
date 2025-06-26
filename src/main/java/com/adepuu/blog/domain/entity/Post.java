@@ -9,6 +9,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -74,6 +75,24 @@ public class Post {
     
     @Column(name = "deleted_at")
     private OffsetDateTime deletedAt;
+    
+    // Relationships
+    @ManyToMany(cascade = {CascadeType.PERSIST, CascadeType.MERGE})
+    @JoinTable(
+        name = "post_tags",
+        joinColumns = @JoinColumn(name = "post_id"),
+        inverseJoinColumns = @JoinColumn(name = "tag_id")
+    )
+    private List<Tag> tags;
+    
+    @OneToMany(mappedBy = "post", cascade = CascadeType.ALL)
+    private List<Comment> comments;
+    
+    @OneToMany(mappedBy = "post", cascade = CascadeType.ALL)
+    private List<Reaction> reactions;
+    
+    @OneToMany(mappedBy = "post", cascade = CascadeType.ALL)
+    private List<ReadingList> readingLists;
     
     public enum PostStatus {
         DRAFT, PUBLISHED, ARCHIVED

@@ -22,6 +22,11 @@ type User {
     isActive: Boolean!
     createdAt: String!
     updatedAt: String!
+    
+    # Computed fields
+    followersCount: Int!
+    followingCount: Int!
+    postsCount: Int!
 }
 
 enum UserRole {
@@ -46,6 +51,14 @@ type Post {
     publishedAt: String
     createdAt: String!
     updatedAt: String!
+    
+    # Relationships
+    tags: [Tag!]!
+    
+    # Computed fields
+    commentsCount: Int!
+    reactionsCount: Int!
+    isBookmarked: Boolean! # For current user
 }
 
 enum PostStatus {
@@ -54,11 +67,87 @@ enum PostStatus {
     ARCHIVED
 }
 
+# Tag types
+type Tag {
+    id: ID!
+    name: String!
+    slug: String!
+    description: String
+    color: String!
+    backgroundColor: String!
+    isOfficial: Boolean!
+    postsCount: Int!
+    followersCount: Int!
+    createdAt: String!
+    updatedAt: String!
+    
+    # Computed fields
+    isFollowing: Boolean! # For current user
+}
+
+# Comment types
+type Comment {
+    id: ID!
+    content: String!
+    author: User!
+    post: Post!
+    parentComment: Comment
+    isEdited: Boolean!
+    createdAt: String!
+    updatedAt: String!
+    
+    # Computed fields
+    repliesCount: Int!
+    reactionsCount: Int!
+}
+
+# Reaction types
+type ReactionType {
+    id: ID!
+    name: String!
+    emoji: String!
+    displayOrder: Int!
+    isActive: Boolean!
+}
+
+type Reaction {
+    id: ID!
+    user: User!
+    reactionType: ReactionType!
+    createdAt: String!
+}
+
 # Authentication types
 type AuthResponse {
     accessToken: String!
     refreshToken: String!
     user: User!
+}
+
+# Pagination types
+type PostConnection {
+    nodes: [Post!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
+}
+
+type CommentConnection {
+    nodes: [Comment!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
+}
+
+type UserConnection {
+    nodes: [User!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
+}
+
+type PageInfo {
+    hasNextPage: Boolean!
+    hasPreviousPage: Boolean!
+    startCursor: String
+    endCursor: String
 }
 
 # Input types
@@ -79,6 +168,49 @@ input CreatePostInput {
     content: String!
     excerpt: String
     coverImageUrl: String
+    canonicalUrl: String
+    tagNames: [String!]
+}
+
+input UpdatePostInput {
+    title: String
+    content: String
+    excerpt: String
+    coverImageUrl: String
+    canonicalUrl: String
+    tagNames: [String!]
+}
+
+input UpdateProfileInput {
+    displayName: String
+    bio: String
+    profileImageUrl: String
+    githubUrl: String
+    twitterUrl: String
+    websiteUrl: String
+    location: String
+    email: String
+}
+
+input CreateCommentInput {
+    postId: ID!
+    content: String!
+    parentCommentId: ID
+}
+
+input PostFilter {
+    status: PostStatus
+    authorId: ID
+    tagSlugs: [String!]
+    search: String
+}
+
+enum Timeframe {
+    DAY
+    WEEK
+    MONTH
+    YEAR
+    ALL_TIME
 }
 
 # Root types
@@ -86,27 +218,74 @@ type Query {
     # Legacy queries
     hello: SampleResponse!
     simple: String!
-    getUser(id: ID!): User
+    
+    # User queries
+    me: User
+    user(username: String!): User
+    users(search: String, page: Int, size: Int): UserConnection!
     
     # Post queries
-    posts(page: Int, size: Int): [Post!]!
+    posts(filter: PostFilter, page: Int, size: Int): PostConnection!
     post(slug: String!): Post
-    myPosts(page: Int, size: Int): [Post!]! # Requires authentication
+    myPosts(status: PostStatus, page: Int, size: Int): [Post!]!
+    feed(page: Int, size: Int): [Post!]! # Personalized feed
+    trendingPosts(timeframe: Timeframe!): [Post!]!
+    
+    # Comment queries
+    comments(postId: ID!, page: Int, size: Int): CommentConnection!
+    comment(id: ID!): Comment
+    
+    # Tag queries
+    tags(search: String, page: Int, size: Int): [Tag!]!
+    tag(slug: String!): Tag
+    popularTags: [Tag!]!
+    myFollowedTags: [Tag!]!
+    
+    # Reaction queries
+    reactionTypes: [ReactionType!]!
+    postReactions(postId: ID!): [Reaction!]!
+    commentReactions(commentId: ID!): [Reaction!]!
 }
 
 type Mutation {
-    # Legacy mutations
-    registerUser(input: RegisterInput!): User!
-    
     # Authentication mutations
     login(input: LoginInput!): AuthResponse!
     register(input: RegisterInput!): AuthResponse!
     refreshToken(refreshToken: String!): AuthResponse!
     logout(refreshToken: String!): Boolean!
     
+    # User mutations
+    updateProfile(input: UpdateProfileInput!): User!
+    followUser(userId: ID!): Boolean!
+    unfollowUser(userId: ID!): Boolean!
+    
     # Post mutations (all require authentication)
     createPost(input: CreatePostInput!): Post!
+    updatePost(id: ID!, input: UpdatePostInput!): Post!
     publishPost(id: ID!): Post!
     deletePost(id: ID!): Boolean!
     archivePost(id: ID!): Post! # Requires MODERATOR or ADMIN role
+    
+    # Comment mutations
+    createComment(input: CreateCommentInput!): Comment!
+    updateComment(id: ID!, content: String!): Comment!
+    deleteComment(id: ID!): Boolean!
+    
+    # Reaction mutations
+    reactToPost(postId: ID!, reactionType: String!): Reaction!
+    removeReactionFromPost(postId: ID!, reactionType: String!): Boolean!
+    reactToComment(commentId: ID!, reactionType: String!): Reaction!
+    removeReactionFromComment(commentId: ID!, reactionType: String!): Boolean!
+    
+    # Tag mutations
+    followTag(tagId: ID!): Boolean!
+    unfollowTag(tagId: ID!): Boolean!
+    createTag(name: String!, description: String, color: String): Tag! # MODERATOR/ADMIN only
+    
+    # Reading list mutations
+    addToReadingList(postId: ID!): Boolean!
+    removeFromReadingList(postId: ID!): Boolean!
+    
+    # Legacy mutations
+    registerUser(input: RegisterInput!): User!
 }

@@ -38,6 +38,7 @@ public class SecurityConfig {
                 .requestMatchers("/graphiql/**").permitAll()
                 .requestMatchers("/auth/**").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
+                .requestMatchers("/actuator/prometheus").permitAll()
                 // All other requests require authentication
                 .anyRequest().authenticated()
             )

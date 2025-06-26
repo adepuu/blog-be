@@ -25,4 +25,10 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
     
     @Query("SELECT p FROM Post p WHERE p.id = :id AND p.deletedAt IS NULL")
     Optional<Post> findActiveById(UUID id);
+    
+    @Query("SELECT CASE WHEN COUNT(p) > 0 THEN true ELSE false END FROM Post p WHERE p.slug = :slug AND p.deletedAt IS NULL")
+    boolean existsBySlug(String slug);
+    
+    @Query("SELECT COUNT(p) FROM Post p WHERE p.author.id = :authorId AND p.deletedAt IS NULL")
+    long countByAuthorIdAndDeletedAtIsNull(UUID authorId);
 }

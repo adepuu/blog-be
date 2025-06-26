@@ -14,6 +14,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @Slf4j
@@ -24,6 +25,7 @@ public class AuthServiceImpl implements AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final TokenBlacklistService tokenBlacklistService;
     
     @Override
     @Transactional(readOnly = true)
@@ -41,6 +43,8 @@ public class AuthServiceImpl implements AuthService {
         
         String accessToken = jwtService.generateAccessToken(user);
         String refreshToken = jwtService.generateRefreshToken(user);
+        
+        log.info("User {} logged in successfully", user.getUsername());
         
         return new AuthResponse(
                 accessToken,
@@ -78,6 +82,8 @@ public class AuthServiceImpl implements AuthService {
         String accessToken = jwtService.generateAccessToken(user);
         String refreshToken = jwtService.generateRefreshToken(user);
         
+        log.info("New user registered: {}", user.getUsername());
+        
         return new AuthResponse(
                 accessToken,
                 refreshToken,
@@ -88,6 +94,11 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional(readOnly = true)
     public AuthResponse refreshToken(String refreshToken) {
+        // Check if token is blacklisted
+        if (tokenBlacklistService.isBlacklisted(refreshToken)) {
+            throw new BadCredentialsException("Token has been revoked");
+        }
+        
         if (!jwtService.validateToken(refreshToken)) {
             throw new BadCredentialsException("Invalid refresh token");
         }
@@ -99,6 +110,21 @@ public class AuthServiceImpl implements AuthService {
         String newAccessToken = jwtService.generateAccessToken(user);
         String newRefreshToken = jwtService.generateRefreshToken(user);
         
+        // Blacklist the old refresh token
+        try {
+            Instant expirationInstant = jwtService.getExpirationTimeFromToken(refreshToken);
+            if (expirationInstant != null) {
+                long expirationTime = expirationInstant.toEpochMilli();
+                tokenBlacklistService.blacklistToken(refreshToken, expirationTime);
+            } else {
+                log.warn("Could not extract expiration time from refresh token, not blacklisting");
+            }
+        } catch (Exception e) {
+            log.warn("Failed to blacklist old refresh token: {}", e.getMessage());
+        }
+        
+        log.info("Refresh token renewed for user: {}", user.getUsername());
+        
         return new AuthResponse(
                 newAccessToken,
                 newRefreshToken,
@@ -108,13 +134,27 @@ public class AuthServiceImpl implements AuthService {
     
     @Override
     public void logout(String refreshToken) {
-        // In a production system, you might want to blacklist the token
-        // For now, we'll just validate it exists
+        // Check if token is valid before blacklisting
         if (!jwtService.validateToken(refreshToken)) {
             throw new BadCredentialsException("Invalid refresh token");
         }
         
-        log.info("User logged out");
-        // TODO: Implement token blacklisting if needed
+        try {
+            // Get token expiration time and blacklist it
+            Instant expirationInstant = jwtService.getExpirationTimeFromToken(refreshToken);
+            if (expirationInstant != null) {
+                long expirationTime = expirationInstant.toEpochMilli();
+                tokenBlacklistService.blacklistToken(refreshToken, expirationTime);
+                
+                String userId = jwtService.getUserIdFromToken(refreshToken);
+                log.info("User {} logged out successfully", userId);
+            } else {
+                log.warn("Could not extract expiration time from refresh token during logout");
+                throw new BadCredentialsException("Invalid refresh token");
+            }
+        } catch (Exception e) {
+            log.error("Error during logout: {}", e.getMessage(), e);
+            throw new RuntimeException("Logout failed", e);
+        }
     }
 }

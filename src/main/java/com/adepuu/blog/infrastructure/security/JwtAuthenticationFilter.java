@@ -1,6 +1,7 @@
 package com.adepuu.blog.infrastructure.security;
 
 import com.adepuu.blog.domain.service.JwtService;
+import com.adepuu.blog.infrastructure.service.TokenBlacklistService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -25,6 +26,7 @@ import java.util.List;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
     
     private final JwtService jwtService;
+    private final TokenBlacklistService tokenBlacklistService;
     
     @Override
     protected void doFilterInternal(
@@ -36,22 +38,35 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         try {
             String jwt = getJwtFromRequest(request);
             
-            if (StringUtils.hasText(jwt) && jwtService.validateToken(jwt)) {
-                String userId = jwtService.getUserIdFromToken(jwt);
-                String username = jwtService.getUsernameFromToken(jwt);
-                String role = jwtService.getRoleFromToken(jwt);
+            if (StringUtils.hasText(jwt)) {
+                // First check if token is blacklisted
+                if (tokenBlacklistService.isBlacklisted(jwt)) {
+                    log.debug("Rejecting blacklisted token: {}", 
+                        jwt.substring(0, Math.min(jwt.length(), 10)) + "...");
+                    filterChain.doFilter(request, response);
+                    return;
+                }
                 
-                if (userId != null && username != null && role != null) {
-                    // Create authentication token with user details
-                    UsernamePasswordAuthenticationToken authentication = 
-                            new UsernamePasswordAuthenticationToken(
-                                    userId,
-                                    null,
-                                    List.of(new SimpleGrantedAuthority("ROLE_" + role))
-                            );
+                // Then validate token
+                if (jwtService.validateToken(jwt)) {
+                    String userId = jwtService.getUserIdFromToken(jwt);
+                    String username = jwtService.getUsernameFromToken(jwt);
+                    String role = jwtService.getRoleFromToken(jwt);
                     
-                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                    if (userId != null && username != null && role != null) {
+                        // Create authentication token with user details
+                        UsernamePasswordAuthenticationToken authentication = 
+                                new UsernamePasswordAuthenticationToken(
+                                        userId,
+                                        null,
+                                        List.of(new SimpleGrantedAuthority("ROLE_" + role))
+                                );
+                        
+                        authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                        SecurityContextHolder.getContext().setAuthentication(authentication);
+                    }
+                } else {
+                    log.debug("Invalid JWT token received");
                 }
             }
         } catch (Exception ex) {
